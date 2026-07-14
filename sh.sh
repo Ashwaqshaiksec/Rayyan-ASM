@@ -106,7 +106,7 @@ if [ "$FAIL" -gt 0 ]; then
     echo "  - $s"
   done
   echo ""
-  echo "Paste the FAIL output blocks above back into the chat and I'll fix them."
+  echo "failed have to check with details again."
   exit 1
 else
   echo "All steps passed."
