@@ -1,0 +1,30 @@
+apiVersion: v2
+name: rayyan-asm
+description: Rayyan Attack Surface Management Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - security
+  - asm
+  - attack-surface-management
+  - cybersecurity
+
+home: https://github.com/ShadooowX/rayyan-asm
+sources:
+  - https://github.com/ShadooowX/rayyan-asm
+
+maintainers:
+  - name: ShadooowX
+    url: https://github.com/ShadooowX
+
+dependencies:
+  - name: postgresql
+    version: "14.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "19.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

@@ -1,0 +1,13 @@
+-- Migration 033: TOTP MFA secrets are now AES-256-GCM encrypted at rest.
+-- No schema change required. The application encrypts secrets on write and
+-- decrypts on read. Secrets written before this migration are still readable
+-- (the getMFASecret helper falls back to plaintext on decrypt failure).
+--
+-- To encrypt existing plaintext secrets:
+--   1. Ensure RAYYAN_AUTH_CREDENTIALKEY is set.
+--   2. Run: SELECT id, mfa_secret FROM users WHERE mfa_enabled = true AND mfa_secret != '';
+--   3. For each row, call PUT /api/v1/auth/mfa/re-encrypt (admin endpoint, if implemented)
+--      or have users re-enroll MFA.
+--
+-- This comment migration exists to document the operational change.
+SELECT 1; -- no-op

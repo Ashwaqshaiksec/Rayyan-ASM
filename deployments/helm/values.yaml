@@ -1,0 +1,128 @@
+replicaCount: 1
+
+image:
+  backend:
+    repository: ghcr.io/shadowoox/rayyan-asm/backend
+    pullPolicy: IfNotPresent
+    tag: ""
+  frontend:
+    repository: ghcr.io/shadowoox/rayyan-asm/frontend
+    pullPolicy: IfNotPresent
+    tag: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext:
+  fsGroup: 1001
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1001
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  backend:
+    type: ClusterIP
+    port: 8080
+  frontend:
+    type: ClusterIP
+    port: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: rayyan-asm.example.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend: backend
+        - path: /ws
+          pathType: Prefix
+          backend: backend
+        - path: /
+          pathType: Prefix
+          backend: frontend
+  tls:
+    - secretName: rayyan-asm-tls
+      hosts:
+        - rayyan-asm.example.com
+
+resources:
+  backend:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  frontend:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+env:
+  jwtSecret: ""          # Required — set via --set or secret
+  postgresPassword: ""   # Required — set via --set or secret
+  redisPassword: ""      # Required — set via --set or secret
+  shodanApiKey: ""
+  censysApiId: ""
+  censysApiSecret: ""
+  securitytrailsKey: ""
+  virustotalKey: ""
+
+postgresql:
+  enabled: true
+  auth:
+    database: rayyan_asm
+    username: rayyan
+    password: ""  # set via --set postgresql.auth.password=...
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: ""  # set via --set redis.auth.password=...
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+persistence:
+  enabled: true
+  reports:
+    size: 10Gi
+    storageClass: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

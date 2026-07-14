@@ -1,0 +1,337 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --surface-0: 244 245 247;
+    --surface-1: 255 255 255;
+    --surface-2: 237 239 243;
+    --surface-3: 226 229 235;
+    --surface-4: 205 210 219;
+    --border: 221 225 232;
+    --border-muted: 233 235 239;
+    --text-primary: 18 21 28;
+    --text-secondary: 86 93 109;
+    --text-muted: 99 104 115;
+    --accent-cyan: 138 75 10;
+    --accent-green: 20 125 59;
+    --accent-red: 200 30 58;
+    --accent-orange: 167 87 9;
+    --accent-yellow: 141 102 8;
+    --accent-purple: 124 58 237;
+    --accent-blue: 138 75 10;
+  }
+
+  /* Previously this was the only palette that existed — the Settings page
+     could toggle a "dark"/"light" class on <html>, but every color in
+     tailwind.config.js was a literal hex value rather than a var(), so the
+     toggle had no visual effect at all. This block is the actual dark
+     palette; tailwind.config.js now points its color tokens at these vars
+     so bg-surface/text-primary/etc. resolve differently per theme. */
+  [data-theme='dark'] {
+    --surface-0: 11 14 20;
+    --surface-1: 18 22 31;
+    --surface-2: 26 31 43;
+    --surface-3: 35 41 55;
+    --surface-4: 50 59 78;
+    --border: 42 49 66;
+    --border-muted: 31 37 48;
+    --text-primary: 232 234 240;
+    --text-secondary: 155 163 181;
+    --text-muted: 107 115 135;
+    --accent-cyan: 34 211 238;
+    --accent-green: 52 211 153;
+    --accent-red: 248 113 113;
+    --accent-orange: 251 146 60;
+    --accent-yellow: 250 204 21;
+    --accent-purple: 167 139 250;
+    --accent-blue: 34 211 238;
+  }
+
+  [data-theme='light'] {
+    --surface-0: 244 245 247;
+    --surface-1: 255 255 255;
+    --surface-2: 237 239 243;
+    --surface-3: 226 229 235;
+    --surface-4: 205 210 219;
+    --border: 221 225 232;
+    --border-muted: 233 235 239;
+    --text-primary: 18 21 28;
+    --text-secondary: 86 93 109;
+    --text-muted: 99 104 115;
+    --accent-cyan: 138 75 10;
+    --accent-green: 20 125 59;
+    --accent-red: 200 30 58;
+    --accent-orange: 167 87 9;
+    --accent-yellow: 141 102 8;
+    --accent-purple: 124 58 237;
+    --accent-blue: 138 75 10;
+  }
+
+  /* A quieter, boardroom-grade palette: cool navy ink on a flat neutral
+     ground, a single restrained corporate blue as the accent instead of
+     the amber/cyan pairing the other two palettes use, and desaturated
+     signal colors so status badges read as calm data rather than alarms.
+     Selected the same way as dark/light — via [data-theme] — so every
+     existing bg-surface/text-primary/etc. class picks it up for free. */
+  [data-theme='slate'] {
+    --surface-0: 246 247 249;
+    --surface-1: 255 255 255;
+    --surface-2: 237 239 243;
+    --surface-3: 224 227 233;
+    --surface-4: 199 204 214;
+    --border: 219 223 230;
+    --border-muted: 232 235 240;
+    --text-primary: 22 35 63;
+    --text-secondary: 74 88 114;
+    --text-muted: 100 112 133;
+    --accent-cyan: 42 78 140;
+    --accent-green: 22 116 92;
+    --accent-red: 158 34 51;
+    --accent-orange: 158 90 8;
+    --accent-yellow: 128 98 12;
+    --accent-purple: 74 62 122;
+    --accent-blue: 42 78 140;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: rgb(var(--surface-0));
+    background-image:
+      linear-gradient(rgba(18, 21, 28, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(18, 21, 28, 0.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: rgb(var(--text-primary));
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    letter-spacing: -0.006em;
+    line-height: 1.5;
+  }
+
+  /* Slate reads as a flat, boardroom-grade surface — no instrument-panel
+     graph paper under the content. */
+  [data-theme='slate'] body {
+    background-image: none;
+  }
+
+  h1, h2, h3 {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--surface-4));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--text-muted));
+    background-clip: padding-box;
+  }
+
+  /* Visible keyboard focus everywhere; mouse/touch clicks stay clean. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent-cyan));
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, rgb(var(--accent-cyan)) 16%, transparent);
+    color: rgb(var(--text-primary));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-1 border border-border rounded shadow-card transition-shadow duration-200;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-card-hover hover:border-surface-4 cursor-pointer;
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-2 px-3.5 py-1.5 rounded text-sm font-medium transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98];
+  }
+
+  .btn-primary {
+    @apply btn bg-accent-cyan text-white border border-accent-cyan hover:bg-accent-cyan/90 font-semibold shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface-1 text-text-secondary border border-border shadow-xs hover:bg-surface-2 hover:text-text-primary hover:border-surface-4;
+  }
+
+  .btn-ghost {
+    @apply btn text-text-secondary hover:text-text-primary hover:bg-surface-2;
+  }
+
+  .btn-danger {
+    @apply btn bg-accent-red/10 text-accent-red border border-accent-red/25 hover:bg-accent-red/15 hover:border-accent-red/40;
+  }
+
+  /* Bracket-tag badges: a log-line / CLI status convention ([ OK ], [ CRIT ])
+     rather than the soft colored-pill look — a left rule instead of a fill
+     keeps a dense table scannable without every row turning into confetti. */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-[10px] font-mono font-semibold uppercase tracking-wider bg-surface-2 border-l-2 border-border text-text-secondary;
+  }
+
+  .badge-green {
+    @apply badge border-accent-green text-accent-green;
+  }
+
+  .badge-red {
+    @apply badge border-accent-red text-accent-red;
+  }
+
+  .badge-orange {
+    @apply badge border-accent-orange text-accent-orange;
+  }
+
+  .badge-yellow {
+    @apply badge border-accent-yellow text-accent-yellow;
+  }
+
+  .badge-blue {
+    @apply badge border-accent-blue text-accent-blue;
+  }
+
+  .badge-purple {
+    @apply badge border-accent-purple text-accent-purple;
+  }
+
+  .badge-gray {
+    @apply badge border-border text-text-secondary;
+  }
+
+  .input {
+    @apply w-full bg-surface-1 border border-border rounded px-3 py-2 text-sm text-text-primary placeholder-text-muted shadow-xs transition-all duration-150 focus:outline-none focus:border-accent-cyan/50 focus:ring-4 focus:ring-accent-cyan/10;
+  }
+
+  .table-container {
+    @apply overflow-x-auto;
+  }
+
+  .table {
+    @apply w-full text-sm border-collapse;
+  }
+
+  .table th {
+    @apply px-4 py-2.5 text-left text-[10px] font-mono font-semibold text-text-muted uppercase tracking-wider border-b border-border bg-surface-2/80 backdrop-blur-sm sticky top-0;
+  }
+
+  .table td {
+    @apply px-4 py-3 border-b border-border-muted text-text-secondary;
+  }
+
+  .table tbody tr {
+    @apply transition-colors duration-100 cursor-pointer;
+  }
+
+  .table tbody tr:hover {
+    background-color: color-mix(in srgb, rgb(var(--accent-cyan)) 5%, transparent);
+  }
+
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .stat-card {
+    @apply card p-4 flex flex-col gap-2 relative overflow-hidden;
+  }
+
+  .mono {
+    @apply font-mono text-xs;
+  }
+
+  .section-label {
+    @apply text-[10px] font-mono font-semibold text-text-muted uppercase tracking-wider;
+  }
+
+  .glass-panel {
+    @apply bg-surface-1/90 backdrop-blur-md border border-border;
+  }
+
+  .skeleton-bar {
+    @apply rounded;
+    background: linear-gradient(90deg, rgb(var(--surface-3)) 25%, rgb(var(--surface-2)) 50%, rgb(var(--surface-3)) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* Signature device: a targeting-reticle frame for the one or two spots
+     per view that should read as "in focus" — the product mark, a hero
+     stat. Four independent corner ticks, not a full outline, so it frames
+     without boxing the content in. */
+  .reticle {
+    @apply relative;
+  }
+  .reticle::before,
+  .reticle::after {
+    content: '';
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-color: rgb(var(--accent-cyan));
+    opacity: 0.9;
+  }
+  .reticle::before {
+    top: -1px;
+    left: -1px;
+    border-top: 1.5px solid rgb(var(--accent-cyan));
+    border-left: 1.5px solid rgb(var(--accent-cyan));
+  }
+  .reticle::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 1.5px solid rgb(var(--accent-cyan));
+    border-right: 1.5px solid rgb(var(--accent-cyan));
+  }
+
+  /* A thin amber sweep used only for genuinely live/in-progress states
+     (an active scan), never as ambient decoration. */
+  .scan-line {
+    @apply relative overflow-hidden;
+  }
+  .scan-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, rgb(var(--accent-cyan)) 35%, transparent), transparent);
+    width: 40%;
+    animation: scan 2.4s linear infinite;
+  }
+}

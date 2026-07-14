@@ -1,0 +1,149 @@
+# Run this file alone for a full production build with all 66 scanning
+# tools baked in (nmap, subfinder, nuclei, httpx, ffuf, ...):
+#
+#   docker compose -f docker-compose.yml up --build -d
+#
+# `app`'s build target below is `runtime`, which installs the full tool
+# registry. If you instead run plain `docker compose up` with
+# docker-compose.dev.yml sitting alongside this file, pass it explicitly
+# (`-f docker-compose.yml -f docker-compose.dev.yml`) — it overrides the
+# build target to `dev` (hot reload, no scanning tools) and is opt-in only,
+# not auto-merged. See docker-compose.dev.yml's header for the full story.
+
+# Named volumes
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+
+services:
+
+  # PostgreSQL
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${DB_USER:-rayyan}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rayyan_dev}
+      POSTGRES_DB:       ${DB_NAME:-rayyan_asm}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      # -d must be explicit: pg_isready with no -d/-PGDATABASE falls back to
+      # using the *username* as the database name (standard libpq behavior).
+      # POSTGRES_USER defaults to "rayyan" but POSTGRES_DB defaults to
+      # "rayyan_asm" — without -d this probed a database literally named
+      # "rayyan", which doesn't exist, so the healthcheck failed forever,
+      # db never reported healthy, and `app` (which depends_on:
+      # condition: service_healthy) never started at all.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rayyan} -d ${DB_NAME:-rayyan_asm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # initdb on a fresh volume (first-ever startup, or after `down -v`)
+      # can take well over a minute on slower disks — without a grace
+      # period, Docker's unhealthy-count (interval * retries = 50s) fires
+      # before initdb even finishes, so `db` gets marked unhealthy and
+      # `app` (depends_on: condition: service_healthy) never starts, even
+      # though the database would have come up fine given more time.
+      start_period: 90s
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # The official redis image does not read a password from an env var —
+    # --requirepass must be passed as a server argument. Without this, Redis
+    # ran fully unauthenticated on the host's 6379 no matter what was set in
+    # .env; REDIS_PASSWORD is the single source of truth shared with the
+    # app's RAYYAN_REDIS_PASSWORD below so the two can never drift apart.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-changeme_redis}"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      # -a auth must match --requirepass above, or the healthcheck itself
+      # fails against an authenticated Redis and `app` never starts.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_redis}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Rayyan ASM server
+  #
+  # The scanning tools (subfinder, nuclei, httpx, gowitness) are baked
+  # directly into this image at build time by the Dockerfile's
+  # `tool-installer` *stage* — there is no longer a separate `tool-installer`
+  # *service* here. The old design ran install-tools.sh a second time at
+  # container startup into a named volume, which (a) required a fragile
+  # `.installed` sentinel + service_completed_successfully dance just to
+  # start the app, and (b) re-downloaded ~4 GitHub releases on every fresh
+  # `docker compose up`, even though the image already had them. Removing it
+  # means `docker compose up` now only has to start 3 services, in the
+  # normal dependency order, with nothing to get stuck waiting on.
+  app:
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # App
+      RAYYAN_APP_ENVIRONMENT:      ${APP_ENVIRONMENT:-development}
+      RAYYAN_APP_VERSION:          ${APP_VERSION:-dev}
+      # Database
+      RAYYAN_DATABASE_DRIVER:      postgres
+      RAYYAN_DATABASE_HOST:        db
+      RAYYAN_DATABASE_PORT:        5432
+      RAYYAN_DATABASE_USER:        ${DB_USER:-rayyan}
+      RAYYAN_DATABASE_PASSWORD:    ${DB_PASSWORD:-rayyan_dev}
+      RAYYAN_DATABASE_NAME:        ${DB_NAME:-rayyan_asm}
+      # Overridable so a real production Postgres (with TLS) can be pointed
+      # at via DB_SSLMODE=require/verify-full without editing this file —
+      # "disable" is only correct for the bundled dev `db` service above.
+      RAYYAN_DATABASE_SSLMODE:     ${DB_SSLMODE:-disable}
+      # Redis
+      RAYYAN_REDIS_ENABLED:        "true"
+      RAYYAN_REDIS_HOST:           redis
+      RAYYAN_REDIS_PORT:           6379
+      # Must match the redis service's --requirepass above (same var).
+      RAYYAN_REDIS_PASSWORD:       ${REDIS_PASSWORD:-changeme_redis}
+      # Auth
+      RAYYAN_AUTH_JWTSECRET:       ${JWT_SECRET:-change-this-secret-in-production}
+      RAYYAN_AUTH_CREDENTIALKEY:   ${RAYYAN_AUTH_CREDENTIALKEY:-}
+      # Server
+      RAYYAN_SERVER_HOST:          "0.0.0.0"
+      RAYYAN_SERVER_PORT:          8080
+      # Logging
+      RAYYAN_LOG_LEVEL:            ${LOG_LEVEL:-info}
+      # External APIs (optional)
+      RAYYAN_EXTERNAL_SHODANAPIKEY:      ${SHODAN_API_KEY:-}
+      RAYYAN_EXTERNAL_CENSYSAPIID:       ${CENSYS_API_ID:-}
+      RAYYAN_EXTERNAL_CENSYSAPISECRET:   ${CENSYS_API_SECRET:-}
+      RAYYAN_EXTERNAL_SECURITYTRAILSKEY: ${SECURITYTRAILS_API_KEY:-}
+      RAYYAN_EXTERNAL_VIRUSTOTALKEY:     ${VIRUSTOTAL_API_KEY:-}
+    ports:
+      - "${PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      # 20s was tuned for a warm restart against an already-migrated DB.
+      # sh.sh runs `docker compose down` with volume removal, so in CI this
+      # is *always* a cold start: initdb on a fresh Postgres volume plus a
+      # 42-model GORM AutoMigrate (internal/database/database.go), which
+      # alone was observed taking ~44s before the app even finished
+      # connecting. 20s failed every check during that window and the
+      # container was marked unhealthy before the server ever opened its
+      # port. 90s matches the grace period already given to db's own
+      # healthcheck above for the same first-boot-initdb reason.
+      start_period: 90s
+      retries: 3

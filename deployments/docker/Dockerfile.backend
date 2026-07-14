@@ -1,0 +1,48 @@
+# Build stage
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache git gcc musl-dev
+
+WORKDIR /app
+
+# go.mod's local `replace` directives point at ./stubs (gopkg.in/check.v1,
+# rsc.io/pdf), so stubs must be copied in before `go mod download` tries to
+# resolve them — same bug fixed in the main Dockerfile.
+COPY go.mod go.sum ./
+COPY stubs ./stubs
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=1 GOOS=linux go build \
+    -ldflags="-w -s -X main.Version=$(git describe --tags --always 2>/dev/null || echo dev)" \
+    -o /app/bin/server \
+    ./cmd/server
+
+# Production stage
+FROM alpine:3.19 AS production
+
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    wget \
+    wkhtmltopdf \
+    && addgroup -g 1001 -S rayyan \
+    && adduser -u 1001 -S rayyan -G rayyan
+
+WORKDIR /app
+
+COPY --from=builder /app/bin/server /app/server
+COPY --chown=rayyan:rayyan config /app/config
+
+RUN mkdir -p /app/reports /app/data \
+    && chown -R rayyan:rayyan /app
+
+USER rayyan
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["/app/server"]

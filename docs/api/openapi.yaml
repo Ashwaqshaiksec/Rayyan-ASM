@@ -1,0 +1,362 @@
+openapi: 3.1.0
+info:
+  title: Rayyan ASM API
+  description: |
+    Attack Surface Management platform API.
+    All endpoints except `/health` and `/api/v1/auth/*` require a Bearer JWT or X-API-Key header.
+    Obtain tokens via `POST /api/v1/auth/login`.
+  version: "1.0.0"
+  contact:
+    email: support@rayyan-asm.example.com
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://your-instance.example.com/api/v1
+    description: Production
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    UUID:
+      type: string
+      format: uuid
+    Domain:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        org_id: { $ref: '#/components/schemas/UUID' }
+        created_at: { type: string, format: date-time }
+    Subdomain:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        name: { type: string }
+        domain_id: { $ref: '#/components/schemas/UUID' }
+        ip_address: { type: string }
+        status: { type: string, enum: [active, inactive, unknown] }
+    Host:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        ip_address: { type: string }
+        hostname: { type: string }
+        org_id: { $ref: '#/components/schemas/UUID' }
+    Finding:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        title: { type: string }
+        severity: { type: string, enum: [critical, high, medium, low, info] }
+        status: { type: string, enum: [open, in_progress, resolved, accepted] }
+        org_id: { $ref: '#/components/schemas/UUID' }
+    ScanJob:
+      type: object
+      properties:
+        id: { $ref: '#/components/schemas/UUID' }
+        type: { type: string, enum: [network, port, dns, web, subdomain, full] }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        targets: { type: object }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10 }
+    LoginResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer }
+        user: { type: object }
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { description: Invalid credentials }
+        '429': { description: Rate limit exceeded }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10, description: "Min 10 chars, must include upper, lower, digit, special" }
+                name: { type: string }
+      responses:
+        '201': { description: User created }
+        '400': { description: Validation error or weak password }
+        '429': { description: Rate limit exceeded }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (revokes token)
+      responses:
+        '200': { description: Logged out }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  expires_in: { type: integer }
+
+  /ws/ticket:
+    post:
+      tags: [WebSocket]
+      summary: Issue a one-time WebSocket auth ticket (30s TTL)
+      description: |
+        Returns a single-use ticket to authenticate the WebSocket upgrade.
+        Use: `GET /ws?ticket=<ticket>` — avoids exposing JWT in URL logs.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket: { type: string }
+                  expires_in: { type: integer, example: 30 }
+
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Org-wide asset and finding counts
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domains: { type: integer }
+                  subdomains: { type: integer }
+                  hosts: { type: integer }
+                  total_findings: { type: integer }
+                  open_findings: { type: integer }
+                  critical_findings: { type: integer }
+                  high_findings: { type: integer }
+                  active_scans: { type: integer }
+                  expiring_certs: { type: integer }
+
+  /scans:
+    get:
+      tags: [Scans]
+      summary: List scan jobs
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, running, completed, failed, cancelled] }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScanJob' }
+                  total: { type: integer }
+    post:
+      tags: [Scans]
+      summary: Create and enqueue a new scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, targets]
+              properties:
+                type: { type: string, enum: [network, port, dns, web, subdomain, full] }
+                targets:
+                  type: object
+                  properties:
+                    targets: { type: array, items: { type: string } }
+                workflow: { type: string, description: Named workflow override }
+      responses:
+        '202': { description: Scan enqueued }
+
+  /scans/{id}:
+    get:
+      tags: [Scans]
+      summary: Get scan job details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanJob' }
+    delete:
+      tags: [Scans]
+      summary: Cancel a running scan
+      description: Signals the running goroutine to stop and marks status as cancelled.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/UUID' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  goroutine_signalled: { type: boolean }
+
+  /domains:
+    get:
+      tags: [Domains]
+      summary: List domains
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Domain' }
+                  total: { type: integer }
+
+  /findings:
+    get:
+      tags: [Findings]
+      summary: List findings
+      parameters:
+        - name: severity
+          in: query
+          schema: { type: string, enum: [critical, high, medium, low, info] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, in_progress, resolved, accepted] }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Finding' }
+                  total: { type: integer }
+
+  /findings/export:
+    get:
+      tags: [Findings]
+      summary: Export findings as CSV/JSON (admin/analyst only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [csv, json], default: json }
+      responses:
+        '200': { description: Export file }
+        '403': { description: Insufficient role }
+
+  /metrics:
+    get:
+      tags: [Observability]
+      summary: Prometheus metrics (restrict to internal network in production)
+      security: []
+      responses:
+        '200':
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema:
+                type: string

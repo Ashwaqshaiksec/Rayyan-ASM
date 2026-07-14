@@ -1,0 +1,68 @@
+# Rayyan ASM — Default Configuration
+# Override any value with environment variables: RAYYAN_<SECTION>_<KEY>
+# Example: RAYYAN_SERVER_PORT=9090
+
+app:
+  name: "Rayyan ASM"
+  version: "1.0.0"
+  environment: "development"
+  debug: false
+  url: ""                    # base URL for generated links, e.g. https://asm.example.com
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  readtimeout: "30s"
+  writetimeout: "60s"
+  idletimeout: "120s"
+
+database:
+  driver: "sqlite"          # sqlite | postgres
+  filepath: "rayyan-asm.db" # sqlite only
+  host: "localhost"
+  port: 5432
+  name: "rayyan_asm"
+  user: "postgres"
+  password: ""
+  sslmode: "disable"
+  maxopen: 25
+  maxidle: 5
+  maxlife: "5m"
+
+redis:
+  enabled: false
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+queue:
+  workers: 10
+  buffersize: 1000
+
+auth:
+  jwtsecret: ""              # REQUIRED in production
+  jwtexpiry: "24h"
+  refreshexpiry: "168h"
+  apikeylength: 32
+  bcryptcost: 12
+  maxloginattempts: 5
+  lockoutduration: "15m"
+
+log:
+  level: "info"             # debug | info | warn | error
+  format: "json"            # json | console
+
+external:
+  shodanapikey: ""
+  censysapiid: ""
+  censysapisecret: ""
+  securitytrailskey: ""
+  virustotalkey: ""
+
+proxy:
+  enabled: false
+  http: ""          # http://127.0.0.1:8080
+  https: ""         # http://127.0.0.1:8080
+  socks5: ""        # socks5://127.0.0.1:1080
+  noproxy: ""       # localhost,127.0.0.1

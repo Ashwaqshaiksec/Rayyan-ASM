@@ -1,0 +1,43 @@
+# This file was missing entirely, which caused a real bug: with no
+# .dockerignore, `docker compose build` sends the ENTIRE project directory
+# as build context, including frontend/node_modules if it happens to exist
+# locally (e.g. from running `npm ci` outside Docker, or — as actually
+# happened — from a node_modules bundled into a project zip built on a
+# different OS/libc than the Alpine-based frontend-builder stage).
+#
+# The Dockerfile's frontend-builder stage does `npm ci` correctly inside
+# the container, but its later `COPY frontend/ .` step then copies the
+# local (potentially foreign-OS) node_modules right on top of the
+# freshly-installed one, corrupting binary symlinks like node_modules/
+# .bin/tsc. Symptom: "Error: Cannot find module '../lib/tsc.js'" during
+# `npm run build`, immediately after a successful `npm ci`.
+
+# Dependencies — always reinstalled inside each build stage, never wanted
+# from the host or a bundled copy.
+node_modules
+frontend/node_modules
+**/node_modules
+
+# Go build artifacts — irrelevant to the build context, just bloat it.
+bin/
+*.exe
+*.test
+
+# VCS metadata — not needed inside the image, and .git can be large.
+.git
+.gitignore
+
+# Local secrets — never send these into a build context.
+.env
+.env.local
+.env.*.local
+
+# Editor/OS cruft.
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Logs and local scratch files.
+*.log
+build.log

@@ -1,0 +1,64 @@
+# Local development overrides — hot reload + debug ports.
+#
+# RENAMED from docker-compose.override.yml (2026-07-03): Compose merges any
+# file literally named docker-compose.override.yml automatically whenever
+# it sits next to docker-compose.yml, with zero opt-in. That meant a plain
+# `docker compose up` silently built the `app` service from this file's
+# `dev` target instead of the base file's `runtime` target — the `dev`
+# image only installs git/gcc/curl/unzip + air/dlv for hot reload, NONE of
+# the 66 scanning binaries (nmap, subfinder, nuclei, httpx, ffuf, ...) that
+# the `runtime` target's tool-installer/go-tools-builder/rust-tools-builder
+# stages bake in. Symptom in production: every tool in the Tools page shows
+# "missing" no matter how many times Verify/Verify All is run, except
+# HackerTarget, which isn't a binary at all — it's a plain HTTPS call baked
+# straight into the Go backend. Renaming this file makes dev mode opt-in:
+#
+#   Production (all tools installed):
+#     docker compose -f docker-compose.yml up --build -d
+#
+#   Local dev (hot reload, NO scanning tools — expected, not a bug):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Fixed from the original: the service names below (`backend`, `postgres`)
+# didn't match docker-compose.yml (`app`, `db`), so Compose was silently
+# merging nothing and this file had no effect at all. It also targeted a
+# `dev` build stage that didn't exist. Both are fixed now — the Dockerfile
+# has a real `dev` stage with hot reload via air.
+#
+# `db` and `redis` blocks were removed entirely: docker-compose.yml already
+# publishes 5432 and 6379, so re-declaring the same ports here was a no-op.
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    environment:
+      GIN_MODE: debug
+      RAYYAN_APP_ENVIRONMENT: development
+      RAYYAN_LOG_LEVEL: debug
+      RAYYAN_LOG_FORMAT: console
+    volumes:
+      # Mount source for live reload via air.
+      - .:/app
+      - /app/tmp  # keep air's build output out of the bind mount
+    ports:
+      - "2345:2345"  # Delve debugger — attach with: dlv connect localhost:2345
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    # No VITE_API_URL here: the frontend's axios client always calls the
+    # relative path /api/v1 (frontend/src/utils/api.ts), and vite.config.ts's
+    # dev-server proxy already forwards /api and /ws to the `app` service by
+    # a hardcoded target (http://app:8080) — nothing in frontend/src ever
+    # reads import.meta.env.VITE_API_URL, so setting it here was dead config
+    # that looked like a real knob but did nothing.

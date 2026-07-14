@@ -1,0 +1,367 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rayyan-asm
+  labels:
+    app.kubernetes.io/name: rayyan-asm
+
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rayyan-config
+  namespace: rayyan-asm
+data:
+  RAYYAN_APP_ENVIRONMENT: "production"
+  RAYYAN_SERVER_HOST: "0.0.0.0"
+  RAYYAN_SERVER_PORT: "8080"
+  RAYYAN_DATABASE_DRIVER: "postgres"
+  RAYYAN_DATABASE_HOST: "postgres-service"
+  RAYYAN_DATABASE_PORT: "5432"
+  RAYYAN_DATABASE_NAME: "rayyan_asm"
+  RAYYAN_DATABASE_USER: "rayyan"
+  RAYYAN_DATABASE_SSLMODE: "disable"
+  RAYYAN_REDIS_ENABLED: "true"
+  RAYYAN_REDIS_HOST: "redis-service"
+  RAYYAN_REDIS_PORT: "6379"
+  RAYYAN_QUEUE_WORKERS: "20"
+  RAYYAN_LOG_LEVEL: "info"
+  RAYYAN_LOG_FORMAT: "json"
+  RAYYAN_SERVER_ALLOWEDORIGINS: "https://rayyan-asm.example.com"
+
+---
+# Secret (fill in your values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rayyan-secrets
+  namespace: rayyan-asm
+type: Opaque
+stringData:
+  RAYYAN_DATABASE_PASSWORD: ""   # REQUIRED: set before deploying
+  RAYYAN_REDIS_PASSWORD: ""      # REQUIRED: set before deploying
+  RAYYAN_AUTH_JWTSECRET: ""      # REQUIRED: min 32 chars, use: openssl rand -hex 32
+  RAYYAN_EXTERNAL_SHODANAPIKEY: ""
+  RAYYAN_EXTERNAL_CENSYSAPIID: ""
+  RAYYAN_EXTERNAL_CENSYSAPISECRET: ""
+  RAYYAN_EXTERNAL_SECURITYTRAILSKEY: ""
+  RAYYAN_EXTERNAL_VIRUSTOTALKEY: ""
+
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rayyan-backend
+  namespace: rayyan-asm
+  labels:
+    app: rayyan-backend
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rayyan-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: rayyan-backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: rayyan-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: backend
+          image: ghcr.io/shadowoox/rayyan-asm/backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: rayyan-config
+            - secretRef:
+                name: rayyan-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: reports
+              mountPath: /app/reports
+      volumes:
+        - name: reports
+          persistentVolumeClaim:
+            claimName: rayyan-reports-pvc
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: rayyan-backend-service
+  namespace: rayyan-asm
+spec:
+  selector:
+    app: rayyan-backend
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rayyan-frontend
+  namespace: rayyan-asm
+  labels:
+    app: rayyan-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rayyan-frontend
+  template:
+    metadata:
+      labels:
+        app: rayyan-frontend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: frontend
+          image: ghcr.io/shadowoox/rayyan-asm/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 15
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: rayyan-frontend-service
+  namespace: rayyan-asm
+spec:
+  selector:
+    app: rayyan-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rayyan-ingress
+  namespace: rayyan-asm
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/websocket-services: "rayyan-backend-service"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - rayyan-asm.example.com
+      secretName: rayyan-tls
+  rules:
+    - host: rayyan-asm.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: rayyan-backend-service
+                port:
+                  number: 8080
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: rayyan-backend-service
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rayyan-frontend-service
+                port:
+                  number: 80
+
+---
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rayyan-backend-hpa
+  namespace: rayyan-asm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rayyan-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# PersistentVolumeClaim for reports
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rayyan-reports-pvc
+  namespace: rayyan-asm
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rayyan-sa
+  namespace: rayyan-asm
+
+---
+# NetworkPolicy — backend may only talk to postgres and redis; deny all other ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rayyan-backend-netpol
+  namespace: rayyan-asm
+spec:
+  podSelector:
+    matchLabels:
+      app: rayyan-backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: rayyan-frontend
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to: []   # Allow all egress for external scan targets (DNS, HTTP probing)
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+        - protocol: UDP
+          port: 53
+
+---
+# NetworkPolicy — frontend only accepts ingress from nginx
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rayyan-frontend-netpol
+  namespace: rayyan-asm
+spec:
+  podSelector:
+    matchLabels:
+      app: rayyan-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 80

@@ -1,0 +1,23 @@
+# Apt-installable tools from the tool registry (internal/modules/toolrunner/registry.go).
+# nmap and smbclient are already installed by the runtime stage's base
+# apt-get line and are not repeated here.
+# NOTE: gitleaks intentionally removed from this list. It does not exist in
+# ANY Ubuntu 22.04 (jammy) apt source (main/universe/multiverse/restricted,
+# including -updates/-security/-backports) — verified directly against the
+# archive.ubuntu.com Packages indices. It was only added to Ubuntu starting
+# with 24.04 (noble); the noble package version literally has "24.04" baked
+# into its version string. Since the Dockerfile installs this file's
+# contents with `apt-get install -y $(...)` in a SINGLE unguarded command
+# (no `|| true`), a missing package here doesn't just skip gitleaks — apt
+# refuses to install ANY package in that command and the whole `docker
+# build` fails at that step. gitleaks is now installed from its GitHub
+# release binary instead (see release-tools.sh), which is what its own
+# install docs recommend for Linux anyway.
+masscan
+nikto
+dnsenum
+dnsrecon
+whatweb
+sqlmap
+wafw00f
+testssl.sh
